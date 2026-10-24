@@ -11,7 +11,7 @@ trap 'rm -rf "$stage_dir"' EXIT
 ditto "$app_dir" "$stage_dir/Hide Notch.app"
 ln -s /Applications "$stage_dir/Applications"
 cat > "$stage_dir/安装说明.txt" <<'INSTRUCTIONS'
-Hide Notch 0.5.1
+Hide Notch 0.5.2
 
 将 Hide Notch.app 拖到 Applications 文件夹，然后从“应用程序”中打开。
 应用常驻菜单栏，点击笔记本图标 → 设置…。

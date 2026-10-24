@@ -48,11 +48,14 @@ struct SettingsView: View {
                         .toggleStyle(.switch)
                     Toggle("底部圆角", isOn: $model.settings.bottomRoundedCorners)
                         .toggleStyle(.switch)
-                    VStack(alignment: .leading, spacing: 8) {
-                        LabeledContent("圆角半径", value: "\(Int(model.settings.cornerRadius)) pt")
-                            .monospacedDigit()
+                    // 名称、滑块和数值保持同一行，固定数值宽度以免拖动时滑块跳动。
+                    HStack(spacing: 12) {
+                        Text("圆角半径").fixedSize()
                         Slider(value: $model.settings.cornerRadius, in: 4...48, step: 1)
                             .accessibilityLabel("圆角半径")
+                        Text("\(Int(model.settings.cornerRadius)) pt")
+                            .monospacedDigit().lineLimit(1)
+                            .frame(width: 48, alignment: .trailing)
                     }
                     .disabled(!model.settings.roundedCorners && !model.settings.bottomRoundedCorners)
                     Text("顶部与底部独立开关，共用圆角半径。同时开启时，壁纸四角均呈圆角。")
@@ -61,11 +64,13 @@ struct SettingsView: View {
                     Label("边缘", systemImage: "rectangle.roundedtop")
                 }
                 Section {
-                    VStack(alignment: .leading, spacing: 8) {
-                        LabeledContent("额外加高", value: "\(Int(model.settings.extraHeight)) pt")
-                            .monospacedDigit()
+                    HStack(spacing: 12) {
+                        Text("额外加高").fixedSize()
                         Slider(value: $model.settings.extraHeight, in: 0...24, step: 1)
                             .accessibilityLabel("菜单栏额外加高")
+                        Text("\(Int(model.settings.extraHeight)) pt")
+                            .monospacedDigit().lineLimit(1)
+                            .frame(width: 48, alignment: .trailing)
                     }
                     Text("自动适配每块屏幕的菜单栏高度，可额外增加黑色区域。")
                         .font(.caption).foregroundStyle(.secondary)
