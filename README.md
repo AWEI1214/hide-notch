@@ -4,7 +4,7 @@
 
 ## 安装与打开
 
-本地执行 `./scripts/package.sh` 后，打包输出位于 `dist/`（安装包和构建缓存不提交到源码仓库）：
+本地执行 `./scripts/package.sh` 后，打包输出位于 `dist/`：
 
 - `Hide Notch.app`：可直接打开的应用。
 - `Hide-Notch-0.4.0.dmg`：打开后将应用拖入 `Applications` 安装。
