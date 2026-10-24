@@ -42,10 +42,10 @@ struct SettingsSnapshot {
         model.refreshDisplays()
         model.setEnabled(true)
         for (name, appearance, size) in [
-            ("settings-light", NSAppearance.Name.aqua, NSSize(width: 480, height: 760)),
-            ("settings-dark", NSAppearance.Name.darkAqua, NSSize(width: 480, height: 760)),
+            ("settings-light", NSAppearance.Name.aqua, NSSize(width: 480, height: 680)),
+            ("settings-dark", NSAppearance.Name.darkAqua, NSSize(width: 480, height: 680)),
             ("settings-compact", NSAppearance.Name.aqua, NSSize(width: 440, height: 560)),
-            ("settings-off", NSAppearance.Name.aqua, NSSize(width: 480, height: 760))
+            ("settings-off", NSAppearance.Name.aqua, NSSize(width: 480, height: 680))
         ] {
             if name == "settings-off" { model.setEnabled(false) }
             let window = NSWindow(contentRect: NSRect(origin: .zero, size: size),

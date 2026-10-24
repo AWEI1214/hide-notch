@@ -1,4 +1,5 @@
 import AppKit
+import CryptoKit
 
 /// 每块屏幕分别保存原壁纸与历史生成文件，断开显示器也不丢弃恢复记录。
 struct WallpaperBackup: Codable {
@@ -38,6 +39,7 @@ final class WallpaperService {
                 backups[legacy.displayID] = legacy
             }
         }
+        cleanTemporaryFiles()
     }
 
     var hasBackup: Bool { !backups.isEmpty }
@@ -60,15 +62,58 @@ final class WallpaperService {
         return current
     }
 
-    /// 为指定屏幕生成实际壁纸，圆角和菜单栏高度都按该屏缩放转换为像素。
-    func makeWallpaper(source: URL, display: DisplayInfo, settings: AppearanceSettings) throws -> CGImage {
-        try WallpaperRenderer.render(
-            image: WallpaperRenderer.readImage(at: source),
-            width: display.pixelWidth, height: display.pixelHeight,
-            bandHeight: Int(((display.menuBarHeight + settings.extraHeight) * display.scale).rounded(.up)),
-            cornerRadius: settings.roundedCorners ? settings.cornerRadius * display.scale : 0,
-            bottomCornerRadius: settings.bottomRoundedCorners ? settings.cornerRadius * display.scale : 0
-        )
+    /// 流式读取原图计算内容指纹，同路径图片被替换时也不会误用旧效果。
+    private func wallpaperKey(source: URL, parameters: [Double]) throws -> String {
+        let file = try FileHandle(forReadingFrom: source)
+        defer { try? file.close() }
+        var hash = SHA256()
+        while let chunk = try file.read(upToCount: 1_048_576), !chunk.isEmpty { hash.update(data: chunk) }
+        // 修改绘制算法时升级版本，避免新旧算法共用同一个缓存文件。
+        hash.update(data: Data("HideNotchWallpaper-v1".utf8))
+        hash.update(data: try JSONEncoder().encode(parameters))
+        return hash.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// 原图和实际像素参数相同时复用 PNG；只有未命中缓存时才绘制、编码图片。
+    private func cachedWallpaper(source: URL, display: DisplayInfo, settings: AppearanceSettings,
+                                 createdFiles: inout [URL]) throws -> (url: URL, reused: Bool) {
+        let width = display.pixelWidth
+        let height = display.pixelHeight
+        let bandHeight = Int(((display.menuBarHeight + settings.extraHeight) * display.scale).rounded(.up))
+        let topRadius = settings.roundedCorners ? settings.cornerRadius * display.scale : 0
+        let bottomRadius = settings.bottomRoundedCorners ? settings.cornerRadius * display.scale : 0
+        let key = try wallpaperKey(source: source, parameters: [Double(width), Double(height), Double(bandHeight), topRadius, bottomRadius])
+        let output = directory.appendingPathComponent("wallpaper-cache-v1-\(key).png")
+        if let attributes = try? FileManager.default.attributesOfItem(atPath: output.path),
+           attributes[.type] as? FileAttributeType == .typeRegular,
+           let size = attributes[.size] as? NSNumber, size.intValue > 0 {
+            return (output, true)
+        }
+        let image = try WallpaperRenderer.render(
+            image: WallpaperRenderer.readImage(at: source), width: width, height: height,
+            bandHeight: bandHeight, cornerRadius: topRadius, bottomCornerRadius: bottomRadius)
+        let temporary = directory.appendingPathComponent(".pending-wallpaper-\(UUID().uuidString).png")
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        try WallpaperRenderer.save(image, to: temporary)
+        // 完整编码后再放入缓存，防止中途中断留下半张 PNG 被下次使用。
+        if FileManager.default.fileExists(atPath: output.path) { try FileManager.default.removeItem(at: output) }
+        try FileManager.default.moveItem(at: temporary, to: output)
+        createdFiles.append(output)
+        return (output, false)
+    }
+
+    /// 只清理一天前遗留且从未提交给系统的临时 PNG，保留可能被其他桌面引用的正式壁纸。
+    private func cleanTemporaryFiles() {
+        guard let files = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return }
+        let protected = Set(backups.values.flatMap { [$0.originalURL, $0.generatedURL] + $0.previousGeneratedURLs + ($0.sourceURL.map { [$0] } ?? []) })
+        for file in files where file.lastPathComponent.hasPrefix(".pending-wallpaper-") && file.pathExtension == "png" {
+            guard !protected.contains(file),
+                  let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
+                  attributes[.type] as? FileAttributeType == .typeRegular,
+                  let modified = attributes[.modificationDate] as? Date,
+                  modified < Date().addingTimeInterval(-86_400) else { continue }
+            try? FileManager.default.removeItem(at: file)
+        }
     }
 
     /// 原子写入整份恢复记录，任何显示器写入失败都仍可单独恢复。
@@ -108,7 +153,8 @@ final class WallpaperService {
         let selectedIDs = Set(selected.map(\.id))
         let toRestore = allDisplays.filter { !selectedIDs.contains($0.id) && backups[$0.id] != nil }
         var records = backups
-        var plans: [(DisplayInfo, URL)] = []
+        var plans: [(DisplayInfo, URL, Bool)] = []
+        var reused = 0
         var generatedFiles: [URL] = []
         var journalSaved = false
         // 预检查失败时，新图片还没有交给系统，可以安全清理；提交后保留以供恢复。
@@ -133,20 +179,26 @@ final class WallpaperService {
                     catch { throw HideError.message("请先在系统设置中为此屏幕选择 PNG/JPEG 静态壁纸，以便恢复。") }
                 }
                 let source = sources[display.id] ?? old?.sourceURL ?? old?.originalURL ?? current
-                let image = try makeWallpaper(source: source, display: display, settings: settings)
-                let generated = directory.appendingPathComponent("wallpaper-\(UUID().uuidString).png")
-                generatedFiles.append(generated)
-                try WallpaperRenderer.save(image, to: generated)
+                let cached = try cachedWallpaper(source: source, display: display, settings: settings, createdFiles: &generatedFiles)
+                let generated = cached.url
+                if cached.reused { reused += 1 }
                 let optionsData = try old?.optionsData ?? NSKeyedArchiver.archivedData(
                     withRootObject: desktop.options(for: display.id), requiringSecureCoding: true
                 )
+                // 重复应用或来回切换参数时，历史地址去重，避免恢复记录本身不断增长。
+                var history = (old?.previousGeneratedURLs ?? []).filter { $0 != generated }
+                if let previous = old?.generatedURL, previous != generated, !history.contains(previous) { history.append(previous) }
                 records[display.id] = WallpaperBackup(
                     displayID: display.id, originalURL: old?.originalURL ?? current,
                     optionsData: optionsData, generatedURL: generated,
-                    previousGeneratedURLs: (old?.previousGeneratedURLs ?? []) + (old.map { [$0.generatedURL] } ?? []),
+                    previousGeneratedURLs: history,
                     sourceURL: source
                 )
-                plans.append((display, generated))
+                let currentOptions = try desktop.options(for: display.id)
+                let unchanged = cached.reused && current == generated &&
+                    currentOptions[.imageScaling] as? UInt == NSImageScaling.scaleAxesIndependently.rawValue &&
+                    currentOptions[.allowClipping] as? Bool == false
+                plans.append((display, generated, !unchanged))
             } catch {
                 throw HideError.message("\(display.name)：\(error.localizedDescription) 尚未修改任何屏幕。")
             }
@@ -162,14 +214,16 @@ final class WallpaperService {
         try persist(records)
         journalSaved = true
         var completed = 0
-        for (display, url) in plans {
+        for (display, url, needsUpdate) in plans {
             do {
-                try desktop.setWallpaper(url, for: display.id, options: [
-                    .imageScaling: NSImageScaling.scaleAxesIndependently.rawValue, .allowClipping: false
-                ])
+                if needsUpdate {
+                    try desktop.setWallpaper(url, for: display.id, options: [
+                        .imageScaling: NSImageScaling.scaleAxesIndependently.rawValue, .allowClipping: false
+                    ])
+                }
                 completed += 1
             } catch {
-                throw HideError.message("已提交 \(completed) 个屏幕；\(display.name) 应用失败：\(error.localizedDescription)。记录已保留，可关闭“Hide Notch”撤销效果。")
+                throw HideError.message("已处理 \(completed) 个屏幕；\(display.name) 应用失败：\(error.localizedDescription)。记录已保留，可关闭“Hide Notch”撤销效果。")
             }
         }
         for display in toRestore {
@@ -177,7 +231,8 @@ final class WallpaperService {
             catch { throw HideError.message("主屏效果已提交，但 \(display.name) 恢复失败：\(error.localizedDescription)") }
         }
         let offline = backups.keys.filter { id in !allDisplays.contains(where: { $0.id == id }) }.count
-        var message = "已向系统提交 \(completed) 个显示器的壁纸设置。"
+        var message = "已应用 \(completed) 个显示器的设置。"
+        if reused > 0 { message += "复用了 \(reused) 张已有壁纸。" }
         if !toRestore.isEmpty { message += "已恢复 \(toRestore.count) 个副屏。" }
         if offline > 0 { message += "\(offline) 个离线屏幕的恢复记录已保留。" }
         return message

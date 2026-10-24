@@ -13,8 +13,9 @@ struct WallpaperRendererTests {
         try testRoundedCorners()
         try testBottomRoundedCorners()
         try WallpaperServiceTests.run()
+        try WallpaperCacheTests.run()
         try SettingsModelTests.run()
-        print("通过 6 项图像、10 项多屏恢复和 8 项总开关/自动更新验证；未修改系统壁纸。")
+        print("通过 6 项图像、10 项多屏恢复、6 项缓存和 8 项总开关/自动更新验证；未修改系统壁纸。")
     }
 
     /// 创建纯白测试图，便于准确区分黑条与剩余图片。

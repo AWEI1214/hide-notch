@@ -8,10 +8,10 @@ struct SettingsModelTests {
         try testChangedWallpaperWhenDisabling()
         try testPartialFailureAndRetry()
         try testOfflineDisplayAndRetry()
-        try testDisableWithBrokenPreview()
+        try testDisableWithMissingSource()
         try testAutomaticUpdates()
         try testDisableCancelsPendingUpdate()
-        try testImageSelectionUpdates()
+        try testCurrentWallpapersOnAllDisplays()
     }
 
     /// 为每个场景隔离壁纸文件、恢复记录及偏好，防止测试改动真实应用状态。
@@ -31,7 +31,7 @@ struct SettingsModelTests {
         try fixture { directory, desktop, _, model, defaults in
             let originals = desktop.urls
             try WallpaperRendererTests.check(!model.isEnabled && model.canToggle, "初始开关关闭")
-            try WallpaperRendererTests.check(desktop.writes.isEmpty, "启动仅壁纸信息，不修改壁纸")
+            try WallpaperRendererTests.check(desktop.writes.isEmpty, "启动只读取状态，不修改壁纸")
             model.setEnabled(true)
             try WallpaperRendererTests.check(model.isEnabled && !model.isError, "开启立即应用")
             desktop.writes = []
@@ -92,14 +92,14 @@ struct SettingsModelTests {
         }
     }
 
-    /// 原图丢失时即使壁纸信息不可用也保留关闭入口，补回文件后能够正常关闭。
-    static func testDisableWithBrokenPreview() throws {
+    /// 原图丢失时也保留关闭入口，补回文件后能够正常关闭。
+    static func testDisableWithMissingSource() throws {
         try fixture { _, desktop, _, model, _ in
             let original = desktop.urls["internal"]!
             model.setEnabled(true)
             try FileManager.default.removeItem(at: original)
             model.refreshDisplays()
-            try WallpaperRendererTests.check(model.canToggle, "无壁纸信息也可尝试关闭")
+            try WallpaperRendererTests.check(model.canToggle, "原图丢失也可尝试关闭")
             model.setEnabled(false)
             try WallpaperRendererTests.check(model.isEnabled && model.isError, "原图丢失时状态不假成功")
             try WallpaperRenderer.save(WallpaperRendererTests.whiteImage(), to: original)
@@ -107,7 +107,7 @@ struct SettingsModelTests {
             try WallpaperRendererTests.check(!model.isEnabled && !model.isError, "补回原图后关闭成功")
         }
     }
-    /// 关闭时只壁纸信息，开启后连续修改合并为一次提交，副屏关闭也会自动还原。
+    /// 关闭时只保存参数，开启后连续修改合并为一次提交，副屏关闭也会自动还原。
     static func testAutomaticUpdates() throws {
         try fixture { _, desktop, _, model, _ in
             let originals = desktop.urls
@@ -133,8 +133,7 @@ struct SettingsModelTests {
             try WallpaperRendererTests.check(desktop.urls["external"] == originals["external"], "副屏关闭自动还原")
             desktop.writes = []
             model.refreshDisplays()
-            model.refreshSource()
-            try WallpaperRendererTests.check(desktop.writes.isEmpty, "刷新或切换壁纸信息不自动提交")
+            try WallpaperRendererTests.check(desktop.writes.isEmpty, "刷新状态不自动提交")
         }
     }
 
@@ -153,20 +152,24 @@ struct SettingsModelTests {
         }
     }
 
-    /// 选图与参数遵循相同规则：关闭时壁纸信息，开启时立即使用新的图片。
-    static func testImageSelectionUpdates() throws {
+    /// 不提供选图后，直接处理各屏幕当前图片；系统换图后下次调整采用新图。
+    static func testCurrentWallpapersOnAllDisplays() throws {
         try fixture { _, desktop, service, model, _ in
-            let original = desktop.urls["internal"]!
-            let other = desktop.urls["external"]!
-            model.selectImage(other, for: "internal")
-            try WallpaperRendererTests.check(desktop.writes.isEmpty, "关闭时选图只壁纸信息")
+            let originals = desktop.urls
+            model.settings.includeOtherDisplays = true
+            model.refreshDisplays()
             model.setEnabled(true)
-            try WallpaperRendererTests.check(try service.currentSource(for: desktop.connected[0]) == other, "开启采用壁纸信息选图")
-            desktop.writes = []
-            model.selectImage(original, for: "internal")
-            try WallpaperRendererTests.check(desktop.writes == ["internal"], "开启时选图自动提交")
-            try WallpaperRendererTests.check(try service.currentSource(for: desktop.connected[0]) == original, "自动提交新图来源")
+            for display in desktop.connected {
+                try WallpaperRendererTests.check(try service.currentSource(for: display) == originals[display.id],
+                                                 "各屏使用自己的当前壁纸")
+            }
+            desktop.urls["internal"] = originals["external"]!
+            model.settings.extraHeight = 4
+            model.settingsChanged()
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+            try WallpaperRendererTests.check(!model.isError, "系统换图后调整可自动生效")
+            try WallpaperRendererTests.check(try service.currentSource(for: desktop.connected[0]) == originals["external"],
+                                             "无需选图即可采用系统新壁纸")
         }
     }
-
 }

@@ -11,6 +11,7 @@ swiftc -swift-version 6 -module-cache-path "$project_dir/.build/ModuleCache" \
     Sources/NotchHide/SettingsModel.swift \
     Tests/NotchHideTests/SettingsModelTests.swift \
     Tests/NotchHideTests/WallpaperServiceTests.swift \
+    Tests/NotchHideTests/WallpaperCacheTests.swift \
     Tests/NotchHideTests/WallpaperRendererTests.swift \
     -o .build/verify-renderer
 .build/verify-renderer

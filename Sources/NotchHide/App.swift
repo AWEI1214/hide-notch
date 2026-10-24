@@ -72,7 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// 使用系统标题栏和原生分组表单，适配 macOS 27 外观并允许窗口缩放。
     private func buildWindow() {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 760),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 680),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = "Hide Notch"
         window.subtitle = "设置"
@@ -82,7 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 表单自身可滚动，不让它的理想高度反过来撑大整个窗口。
         content.sizingOptions = []
         window.contentView = content
-        window.setFrameAutosaveName("NotchHideCompactSettings")
+        window.setFrameAutosaveName("NotchHideSimpleSettings")
         window.center()
     }
 

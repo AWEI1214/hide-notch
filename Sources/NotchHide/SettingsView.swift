@@ -21,9 +21,9 @@ struct SettingsView: View {
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .onChange(of: model.settings) { _ in model.settingsChanged() }
-        .onChange(of: model.selectedDisplayID) { _ in model.refreshSource() }
     }
 
+    /// 总开关保持可操作，其余设置在关闭状态统一禁用，沿用系统的灰显样式。
     private var settingsPanel: some View {
         Form {
             Section {
@@ -31,66 +31,51 @@ struct SettingsView: View {
                     .toggleStyle(.switch)
                     .disabled(!model.canToggle)
                     .accessibilityIdentifier("hideNotchToggle")
-                Text(model.isEnabled ? "已开启，调整设置自动生效。" : "已关闭，设置将在下次开启时生效。")
+                Text(model.isEnabled ? "已开启，调整设置自动生效。" : "已关闭，开启后可调整下方设置。")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Section {
-                Toggle("同时应用到副屏", isOn: $model.settings.includeOtherDisplays)
-                    .toggleStyle(.switch)
-                Text("\(model.primaryDescription)。开启后，各屏幕保留自己的壁纸。")
-                    .font(.caption).foregroundStyle(.secondary)
-                LabeledContent("已连接", value: "\(model.displays.count) 个显示器")
-                if !model.targetDisplays.isEmpty {
-                    Picker("壁纸所属显示器", selection: $model.selectedDisplayID) {
-                        ForEach(model.targetDisplays) { display in
-                            Text(display.name).tag(display.id)
-                        }
+            Group {
+                Section {
+                    Toggle("同时应用到副屏", isOn: $model.settings.includeOtherDisplays)
+                        .toggleStyle(.switch)
+                    Text("\(model.primaryDescription)。开启后，各屏幕保留自己的壁纸。")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text("功能开启时，关闭此项会自动还原已连接副屏。")
+                        .font(.caption).foregroundStyle(.secondary)
+                } header: {
+                    Label("显示器", systemImage: "display.2")
+                }
+                Section {
+                    Toggle("顶部圆角", isOn: $model.settings.roundedCorners)
+                        .toggleStyle(.switch)
+                    Toggle("底部圆角", isOn: $model.settings.bottomRoundedCorners)
+                        .toggleStyle(.switch)
+                    VStack(alignment: .leading, spacing: 8) {
+                        LabeledContent("圆角半径", value: "\(Int(model.settings.cornerRadius)) pt")
+                            .monospacedDigit()
+                        Slider(value: $model.settings.cornerRadius, in: 4...48, step: 1)
+                            .accessibilityLabel("圆角半径")
                     }
+                    .disabled(!model.settings.roundedCorners && !model.settings.bottomRoundedCorners)
+                    Text("顶部与底部独立开关，共用圆角半径。同时开启时，壁纸四角均呈圆角。")
+                        .font(.caption).foregroundStyle(.secondary)
+                } header: {
+                    Label("边缘", systemImage: "rectangle.roundedtop")
                 }
-                LabeledContent("壁纸") {
-                    Text(model.sourceName).lineLimit(1).truncationMode(.middle).help(model.sourceName)
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        LabeledContent("额外加高", value: "\(Int(model.settings.extraHeight)) pt")
+                            .monospacedDigit()
+                        Slider(value: $model.settings.extraHeight, in: 0...24, step: 1)
+                            .accessibilityLabel("菜单栏额外加高")
+                    }
+                    Text("自动适配每块屏幕的菜单栏高度，可额外增加黑色区域。")
+                        .font(.caption).foregroundStyle(.secondary)
+                } header: {
+                    Label("菜单栏", systemImage: "menubar.rectangle")
                 }
-                HStack {
-                    Button("选择壁纸…", action: model.chooseImage)
-                    Button("使用当前壁纸", action: model.useCurrentImage)
-                }
-                .disabled(model.selectedDisplay == nil || model.isBusy)
-                Text("仅支持 PNG / JPEG 静态壁纸。")
-                    .font(.caption).foregroundStyle(.secondary)
-                Text("功能开启时，关闭此项会自动还原已连接副屏。")
-                    .font(.caption).foregroundStyle(.secondary)
-            } header: {
-                Label("显示器", systemImage: "display.2")
             }
-            Section {
-                Toggle("顶部圆角", isOn: $model.settings.roundedCorners)
-                    .toggleStyle(.switch)
-                Toggle("底部圆角", isOn: $model.settings.bottomRoundedCorners)
-                    .toggleStyle(.switch)
-                VStack(alignment: .leading, spacing: 8) {
-                    LabeledContent("圆角半径", value: "\(Int(model.settings.cornerRadius)) pt")
-                        .monospacedDigit()
-                    Slider(value: $model.settings.cornerRadius, in: 4...48, step: 1)
-                        .accessibilityLabel("圆角半径")
-                }
-                .disabled(!model.settings.roundedCorners && !model.settings.bottomRoundedCorners)
-                Text("顶部与底部独立开关，共用圆角半径。同时开启时，壁纸四角均呈圆角。")
-                    .font(.caption).foregroundStyle(.secondary)
-            } header: {
-                Label("边缘", systemImage: "rectangle.roundedtop")
-            }
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    LabeledContent("额外加高", value: "\(Int(model.settings.extraHeight)) pt")
-                        .monospacedDigit()
-                    Slider(value: $model.settings.extraHeight, in: 0...24, step: 1)
-                        .accessibilityLabel("菜单栏额外加高")
-                }
-                Text("自动适配每块屏幕的菜单栏高度，可额外增加黑色区域。")
-                    .font(.caption).foregroundStyle(.secondary)
-            } header: {
-                Label("菜单栏", systemImage: "menubar.rectangle")
-            }
+            .disabled(!model.isEnabled)
             Section {
                 Text("开启后设置自动生效，滑块停止拖动后更新。退出软件会保留效果。")
                     .font(.caption).foregroundStyle(.secondary)
