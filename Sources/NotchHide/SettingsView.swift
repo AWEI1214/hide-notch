@@ -38,9 +38,7 @@ struct SettingsView: View {
                 Section {
                     Toggle("同时应用到副屏", isOn: $model.settings.includeOtherDisplays)
                         .toggleStyle(.switch)
-                    Text("\(model.primaryDescription)。开启后，各屏幕保留自己的壁纸。")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Text("功能开启时，关闭此项会自动还原已连接副屏。")
+                    Text("默认只处理内置显示器，开启后应用到全部屏幕")
                         .font(.caption).foregroundStyle(.secondary)
                 } header: {
                     Label("显示器", systemImage: "display.2")
@@ -76,12 +74,6 @@ struct SettingsView: View {
                 }
             }
             .disabled(!model.isEnabled)
-            Section {
-                Text("开启后设置自动生效，滑块停止拖动后更新。退出软件会保留效果。")
-                    .font(.caption).foregroundStyle(.secondary)
-                Text("仅处理各屏幕的当前桌面，暂不自动同步多个桌面。菜单栏的实际材质由系统决定。")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
         }
         .formStyle(.grouped)
         .disabled(model.isBusy)

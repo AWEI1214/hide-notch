@@ -35,9 +35,6 @@ final class SettingsModel: ObservableObject {
     var canEnable: Bool { service != nil && !isBusy && !isUpdatePending && !targetDisplays.isEmpty }
     // 即使壁纸无法读取，已经开启的效果仍可尝试关闭。
     var canToggle: Bool { service != nil && !isBusy && (isEnabled || canEnable) }
-    var primaryDescription: String {
-        displays.contains(where: \.isBuiltIn) ? "默认处理内置显示器" : "默认处理系统主显示器"
-    }
 
     /// 只刷新显示器和运行状态；启动、拔插或切换桌面时不主动修改壁纸。
     func refreshDisplays() {
